@@ -44,7 +44,12 @@ export interface PropInteraction {
   releaseFrame: number;
   /** Returns the animated hand grip location at the given frame. */
   gripAtFrame: (frame: number) => Point;
-  /** Optional landing contact for a smooth post-release movement. */
+  /**
+   * Where the object's base anchor ends up after release. With `settleFrames > 0` the object eases
+   * there; with `settleFrames` 0 or omitted it is placed there on the release frame.
+   * For a believable placement the hand should already have set the object down here; use
+   * `checkReleaseContact()` to measure how far the object would travel on its own after release.
+   */
   finalBase?: Point;
   settleFrames?: number;
   scale?: number;
@@ -52,6 +57,7 @@ export interface PropInteraction {
 }
 
 function validateInteraction(i: PropInteraction): void {
+  if (typeof i.gripAtFrame !== 'function') throw new TypeError('gripAtFrame must be a function');
   if (![i.pickupFrame, i.releaseFrame].every(Number.isFinite) || i.pickupFrame >= i.releaseFrame) {
     throw new RangeError('pickupFrame must precede releaseFrame');
   }
@@ -67,6 +73,7 @@ function validateInteraction(i: PropInteraction): void {
  */
 export function samplePropInteraction(i: PropInteraction, frame: number): PropFrame {
   validateInteraction(i);
+  if (!Number.isFinite(frame)) throw new RangeError('Frame must be finite');
   const scale = i.scale ?? 1;
   const angleDegrees = i.angleDegrees ?? 0;
   if (frame < i.pickupFrame) return {phase: 'resting', pose: placePropAtBase(i.prop, i.initialBase, scale, angleDegrees)};
@@ -74,8 +81,10 @@ export function samplePropInteraction(i: PropInteraction, frame: number): PropFr
 
   const releasePose = placePropAtGrip(i.prop, i.gripAtFrame(i.releaseFrame), scale, angleDegrees);
   const settleFrames = i.settleFrames ?? 0;
-  if (!i.finalBase || settleFrames === 0) return {phase: 'released', pose: releasePose};
+  if (!i.finalBase) return {phase: 'released', pose: releasePose};
   const destination = placePropAtBase(i.prop, i.finalBase, scale, angleDegrees);
+  // v0.1.0 silently ignored finalBase when settleFrames was 0/omitted; it is now honoured.
+  if (settleFrames === 0) return {phase: 'released', pose: destination};
   if (frame >= i.releaseFrame + settleFrames) return {phase: 'released', pose: destination};
   const t = easeInOut(clamp((frame - i.releaseFrame) / settleFrames, 0, 1));
   return {phase: 'settling', pose: {...releasePose, topLeft: mix(releasePose.topLeft, destination.topLeft, t)}};
@@ -90,4 +99,52 @@ export function checkPickupContact(i: PropInteraction, tolerancePx = 1): Contact
   const hand = i.gripAtFrame(i.pickupFrame);
   const errorPx = distance(hand, propAnchor);
   return {ok: errorPx <= tolerancePx, errorPx, hand, propAnchor};
+}
+
+/**
+ * Detects an object that would move on its own after the hand lets go.
+ * Compares the object's base anchor at the release frame (while still in the hand) with `finalBase`.
+ * A large error means the object floats or snaps to the table after release.
+ * Without `finalBase`, the object stays where it was released and the check passes.
+ */
+export function checkReleaseContact(i: PropInteraction, tolerancePx = 1): ContactCheck {
+  validateInteraction(i);
+  const scale = i.scale ?? 1;
+  const angleDegrees = i.angleDegrees ?? 0;
+  const hand = i.gripAtFrame(i.releaseFrame);
+  const releasePose = placePropAtGrip(i.prop, hand, scale, angleDegrees);
+  const baseAtRelease = worldAnchor(releasePose, i.prop.baseAnchor);
+  const target = i.finalBase ?? baseAtRelease;
+  const errorPx = distance(baseAtRelease, target);
+  return {ok: errorPx <= tolerancePx, errorPx, hand, propAnchor: baseAtRelease};
+}
+
+/**
+ * Runs both contact checks and the per-frame hand/object attachment check across a frame range.
+ * Intended for automated QC in tests or CI before rendering.
+ */
+export interface InteractionReport {
+  pickup: ContactCheck;
+  release: ContactCheck;
+  /** Largest per-frame jump of the object's top-left corner, and the frame where it happens. */
+  maxJumpPx: number;
+  maxJumpFrame: number;
+  ok: boolean;
+}
+export function inspectPropInteraction(i: PropInteraction, fromFrame: number, toFrame: number,
+  options: {tolerancePx?: number; maxJumpPx?: number} = {}): InteractionReport {
+  const tolerancePx = options.tolerancePx ?? 1;
+  const limit = options.maxJumpPx ?? Infinity;
+  const pickup = checkPickupContact(i, tolerancePx);
+  const release = checkReleaseContact(i, tolerancePx);
+  let maxJumpPx = 0;
+  let maxJumpFrame = fromFrame;
+  let prev = samplePropInteraction(i, fromFrame).pose.topLeft;
+  for (let f = fromFrame + 1; f <= toFrame; f++) {
+    const cur = samplePropInteraction(i, f).pose.topLeft;
+    const jump = distance(prev, cur);
+    if (jump > maxJumpPx) { maxJumpPx = jump; maxJumpFrame = f; }
+    prev = cur;
+  }
+  return {pickup, release, maxJumpPx, maxJumpFrame, ok: pickup.ok && release.ok && maxJumpPx <= limit};
 }
