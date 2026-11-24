@@ -37,14 +37,16 @@ The hand is a lateral (thumb-side) 2D view. Each digit is a chain of three rigid
 
 Joint limits approximate human ranges (fingers MCP −20…90°, PIP 0…110°, DIP 0…80°). They prevent impossible poses but are not anatomically exact.
 
-The pinch presets were tuned numerically for their gaps (battery ≈ 12.5 units, paper ≈ 3 units), and the tests assert those gaps.
+Each joint has a radius, so a digit is a chain of tapered capsules. The same geometry is used for drawing (`digitSegments`) and for measuring contact (`measureDigitContacts`), so what QC measures is what the viewer sees.
+
+**Pinch.** `tools/tune-pinch.mjs` searches thumb and index angles under explicit constraints: tips ahead of the knuckles, a thumb→index axis perpendicular to the hand, an exact surface gap, and no thumb, index or palm overlap with an object placed between the tips. `batteryPinch` and `pinchTight` come from that search. `solvePinchGrip` then interpolates along the family to fit any object width, and places the hand using the object's surface normals.
 
 ### Known limitations
 
 - There is no out-of-plane rotation (no palm turning toward the camera) and no finger spread perpendicular to the drawing plane.
-- There is no collision detection between finger outlines and object outlines. Depth is handled with `layer` (`front`/`back`) and draw order.
+- Contact is *measured* (`measureDigitContacts`), not *resolved*: the toolkit does not push fingers out of objects automatically. Depth is handled with `layer` (`front`/`back`) and draw order; fingers drawn behind an object may overlap it.
 - There are no physics. Released objects stay put or are placed at `finalBase`.
-- Prop rotation is constant during an interaction. Animated tilt is on the roadmap.
+- Objects can turn with the hand while held (`heldAngleAtFrame`), but there is no physics: nothing tips over or slides on its own.
 
 ## Testing strategy
 

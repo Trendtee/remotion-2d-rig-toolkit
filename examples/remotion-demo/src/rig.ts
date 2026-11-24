@@ -3,19 +3,23 @@
  * the same functions drive the video and the automated QC test (qc/continuity.test.mjs).
  */
 import {
-  attachHandToArm, blendHandPoses, createArticulatedHand, easeInOut, placePropAtBase, point,
-  sampleScalar, samplePoint, samplePropInteraction, solveTwoBoneArm, worldAnchor, wristForGrip,
-  type ArmSolution, type ArticulatedHand, type FrameKey, type HandPresetName, type Point,
+  add, attachHandToArm, blendHandPoses, createArticulatedHand, easeInOut, fromHandLocal, placePropAtBase, point,
+  propPinchContacts, propPinchNormals, sampleScalar, sampleSmoothPoint, sampleSmoothScalar, samplePoint, samplePropInteraction, solvePinchGrip,
+  solveTwoBoneArm, toHandLocal, worldAnchor, wristForGrip,
+  type ArmSolution, type ArticulatedHand, type FrameKey, type PathKey, type HandPresetName, type Point,
   type PropDefinition, type PropFrame, type PropInteraction
 } from 'remotion-2d-rig-toolkit';
 
 export const HAND_SCALE = 2.1;
 export const SHOULDER = point(318, 486);
-export const ARM = {shoulder: SHOULDER, upperArmLength: 190, forearmLength: 180, elbowBend: 'clockwise' as const};
+// Elbow constraint: never fold tighter than 30° or lock fully straight.
+export const ARM = {shoulder: SHOULDER, upperArmLength: 190, forearmLength: 180, elbowBend: 'clockwise' as const, minElbowAngle: 30, maxElbowAngle: 172};
 export const TABLE_TOP = 712;
 
 export interface SceneConfig {
   id: string;
+  /** 'wrap': power grip around a handle. 'pinch': thumb–index opposition on two contact points. */
+  mode: 'wrap' | 'pinch';
   title: string;
   prop: PropDefinition;
   gripPose: HandPresetName;
@@ -38,24 +42,29 @@ export const MUG: PropDefinition = {
 };
 
 export const BATTERY: PropDefinition = {
-  width: 40, height: 96,
-  // Upright AA-style cell: pinched at the middle of its left edge, standing on its flat end.
-  gripAnchor: point(4, 44),
-  baseAnchor: point(20, 96)
+  width: 26, height: 70,
+  // Upright cell standing on its flat end. The hand comes from the upper left, so the pinch axis is
+  // oblique: the thumb touches the left side 24 px down, the index finger the right side 6 px down.
+  // The grip anchor is the centre between those two contacts.
+  pinchContacts: [point(0, 24), point(26, 6)],
+  pinchNormals: [point(-1, 0), point(1, 0)],
+  gripAnchor: point(13, 15),
+  baseAnchor: point(13, 70)
 };
 
 export const MUG_SCENE: SceneConfig = {
-  id: 'MugPickup', title: 'Reach · grip · lift · carry · place · release',
+  id: 'MugPickup', mode: 'wrap', title: 'Reach · grip · lift · carry · place · release',
   prop: MUG, gripPose: 'mugHandle', startBase: point(570, TABLE_TOP), endBase: point(790, TABLE_TOP),
   liftPx: 130, durationInFrames: 240,
   beats: [18, 54, 66, 92, 140, 162, 174, 192, 226], holdAngle: -4
 };
 
 export const BATTERY_SCENE: SceneConfig = {
-  id: 'BatteryPinch', title: 'Precision pinch · lift · place',
-  prop: BATTERY, gripPose: 'batteryPinch', startBase: point(560, TABLE_TOP), endBase: point(740, TABLE_TOP),
-  liftPx: 115, durationInFrames: 240,
-  beats: [18, 54, 66, 92, 140, 162, 174, 192, 226], holdAngle: 0
+  id: 'BatteryPinch', mode: 'pinch', title: 'Precision pinch · lift · carry · place',
+  prop: BATTERY, gripPose: 'batteryPinch', startBase: point(640, TABLE_TOP), endBase: point(700, TABLE_TOP),
+  liftPx: 42, durationInFrames: 240,
+  // [reachStart, contact(closed), pickup, lifted, carried, placed, release, opened, neutral]
+  beats: [20, 74, 76, 96, 150, 168, 170, 180, 236], holdAngle: 0
 };
 
 export interface RigFrame {
@@ -73,6 +82,10 @@ const restGrip = (s: SceneConfig) => worldAnchor(placePropAtBase(s.prop, s.start
 const placeGrip = (s: SceneConfig) => worldAnchor(placePropAtBase(s.prop, s.endBase), s.prop.gripAnchor);
 
 export function buildScene(s: SceneConfig) {
+  return s.mode === 'pinch' ? buildPinchScene(s) : buildWrapScene(s);
+}
+
+function buildWrapScene(s: SceneConfig) {
   const [reach, contact, closed, lifted, carried, placed, opened, retreated, neutral] = s.beats;
   const a = restGrip(s);
   const b = placeGrip(s);
@@ -144,6 +157,98 @@ export function buildScene(s: SceneConfig) {
     gripAtFrame: actualGrip
   };
 
+  const frameAt = (frame: number): RigFrame => ({...rigAt(frame), prop: samplePropInteraction(interaction, frame)});
+  return {frameAt, interaction, scene: s};
+}
+
+/**
+ * Precision pinch: the hand is placed by the object's two pinch contacts (thumb side, index side).
+ *
+ * Sequence: reach (hand comes over the object, fingers open) → descend with an open pinch that clears
+ * both sides → close until thumb and index touch → ownership transfers → lift, carry, lower until the
+ * base meets the table → ownership transfers back → fingers open sideways → hand lifts clear → rest.
+ * The wrist is always placed for the CLOSED pose, so closing and opening never drag the object.
+ */
+function buildPinchScene(s: SceneConfig) {
+  const [reach, contact, pickup, lifted, carried, placed, release, opened, neutral] = s.beats;
+  const opts = {scale: HAND_SCALE} as const;
+  // Where the object's base would be if the hand carried it along this path.
+  const baseKeys: FrameKey<Point>[] = [
+    {frame: 0, value: s.startBase},
+    {frame: pickup, value: s.startBase, interpolation: 'hold'},
+    {frame: lifted, value: point(s.startBase.x + 0.4 * (s.endBase.x - s.startBase.x), s.startBase.y - s.liftPx)},
+    {frame: carried, value: point(s.endBase.x, s.endBase.y - s.liftPx)},
+    {frame: placed, value: s.endBase},
+    {frame: neutral, value: s.endBase, interpolation: 'hold'}
+  ];
+  // The closed pinch is SOLVED from the object's contacts and normals: pose opening and wrist placement.
+  const placementAt = (frame: number) => {
+    const pose = placePropAtBase(s.prop, samplePoint(baseKeys, frame));
+    const [thumbSide, indexSide] = propPinchContacts(s.prop, pose);
+    return solvePinchGrip(thumbSide, indexSide, {...opts, ...propPinchNormals(s.prop, pose)});
+  };
+  const closedPose = placementAt(0).pose;
+  // Where the object's grip anchor sits in the hand's own frame once the pinch is closed (rigid attachment).
+  const restProp = placePropAtBase(s.prop, s.startBase);
+  const solvedAtRest = placementAt(0);
+  const gripLocal = toHandLocal({...solvedAtRest, scale: HAND_SCALE, side: 'right'}, worldAnchor(restProp, s.prop.gripAnchor));
+  const atStart = placementAt(contact);
+  const atEnd = placementAt(release);
+  const idleWrist = point(SHOULDER.x + 40, SHOULDER.y + 352);
+  const idleAngle = 80;
+  // Approach and retreat are keyed in world space and pass ABOVE the object, so no finger sweeps through it.
+  // Between `contact - 8` and `opened` the wrist follows the closed-pinch placement exactly.
+  const pathKeys: PathKey<Point>[] = [
+    {frame: 0, value: idleWrist},
+    {frame: reach, value: idleWrist, interpolation: 'hold'},
+    {frame: contact - 28, value: add(atStart.wrist, point(-125, 5))},
+    {frame: contact - 16, value: add(atStart.wrist, point(-20, -50))},
+    {frame: contact - 8, value: atStart.wrist, stop: true},
+    {frame: opened, value: atEnd.wrist, stop: true},
+    {frame: opened + 16, value: add(atEnd.wrist, point(-18, -44))},
+    {frame: opened + 30, value: add(atEnd.wrist, point(-150, 30))},
+    {frame: neutral, value: idleWrist}
+  ];
+  const angleKeys: PathKey<number>[] = [
+    {frame: 0, value: idleAngle},
+    {frame: reach, value: idleAngle, interpolation: 'hold'},
+    {frame: contact - 16, value: atStart.forwardDegrees},
+    {frame: opened + 12, value: atEnd.forwardDegrees, interpolation: 'hold'},
+    {frame: neutral, value: idleAngle}
+  ];
+  // Finger shaping: relaxed → open pinch → closed on the object → open → relaxed.
+  const openKeys: FrameKey<number>[] = [
+    {frame: 0, value: 0}, {frame: reach + 4, value: 0, interpolation: 'hold'}, {frame: contact - 16, value: 1},
+    {frame: opened + 12, value: 1, interpolation: 'hold'}, {frame: neutral - 6, value: 0}
+  ];
+  const closeKeys: FrameKey<number>[] = [
+    {frame: 0, value: 0}, {frame: contact - 8, value: 0, interpolation: 'hold'}, {frame: contact, value: 1},
+    {frame: release, value: 1, interpolation: 'hold'}, {frame: opened, value: 0}
+  ];
+
+  const rigAt = (frame: number): Omit<RigFrame, 'prop'> => {
+    const following = frame >= contact - 8 && frame <= opened;
+    const place = following ? placementAt(frame) : null;
+    const wristTarget = place ? place.wrist : sampleSmoothPoint(pathKeys, frame);
+    const handAngle = place ? place.forwardDegrees : sampleSmoothScalar(angleKeys, frame);
+    const arm = solveTwoBoneArm(ARM, wristTarget);
+    const shaped = blendHandPoses('relaxed', 'pinchWide', easeInOut(sampleScalar(openKeys, frame)));
+    const closure = sampleScalar(closeKeys, frame);
+    const pose = blendHandPoses(shaped, closedPose, easeInOut(closure));
+    const hand = attachHandToArm(arm, {pose, handAngle, maxWristBend: 80, ...opts});
+    return {frame, arm, hand, closure, fingersBehindObject: false};
+  };
+
+  // The object follows the ACTUAL solved hand, so any IK or wrist clamping shows up in QC instead of hiding.
+  const actualGrip = (frame: number): Point => fromHandLocal(rigAt(frame).hand, gripLocal);
+
+  const interaction: PropInteraction = {
+    prop: s.prop, initialBase: s.startBase, finalBase: s.endBase,
+    pickupFrame: pickup, releaseFrame: release, settleFrames: 0,
+    gripAtFrame: actualGrip,
+    // While held, the object turns exactly as much as the hand has turned since the pinch closed.
+    heldAngleAtFrame: (frame: number) => rigAt(frame).hand.forwardDegrees - solvedAtRest.forwardDegrees
+  };
   const frameAt = (frame: number): RigFrame => ({...rigAt(frame), prop: samplePropInteraction(interaction, frame)});
   return {frameAt, interaction, scene: s};
 }

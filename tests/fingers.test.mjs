@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   point, distance, solveTwoBoneArm, createArticulatedHand, blendHandPoses, wristForGrip,
-  attachHandToArm, limitWristBend, clampDigitCurl, HAND_POSES, DIGITS, digitPath, palmPath
+  attachHandToArm, limitWristBend, clampDigitCurl, HAND_POSES, DIGITS, digitPath, palmPath,
+  pinchTips, pinchPoseForGap, digitSegments
 } from '../dist/index.js';
 
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `Expected ${a} ≈ ${b}`);
@@ -26,13 +27,25 @@ test('open hand is straighter than a fist', () => {
   assert.ok(span(createArticulatedHand({pose: 'open'})) > span(createArticulatedHand({pose: 'fist'})) * 2);
 });
 
-test('pinch presets leave a gap that fits their object', () => {
-  const gap = pose => {
-    const h = createArticulatedHand({pose});
-    return distance(h.digits[0].joints[3], h.digits[1].joints[3]);
-  };
-  assert.ok(gap('batteryPinch') > 9 && gap('batteryPinch') < 16, `battery gap ${gap('batteryPinch')}`);
-  assert.ok(gap('paperPinch') < 5, `paper gap ${gap('paperPinch')}`);
+test('pinch family: tips face each other ahead of the knuckles and the gap shrinks monotonically', () => {
+  const surface = pose => pinchTips(createArticulatedHand({pose})).surfaceGap;
+  assert.ok(surface('pinchWide') > surface('batteryPinch') && surface('batteryPinch') > surface('pinchTight'));
+  assert.ok(surface('paperPinch') < 2, `paper pinch should nearly close (${surface('paperPinch')})`);
+  for (const p of ['batteryPinch', 'pinchTight']) {
+    const t = pinchTips(createArticulatedHand({pose: p}));
+    close(t.axisDegrees, -90, 1);              // thumb→index axis perpendicular to the hand
+    assert.ok(t.thumb.x > 40 && t.index.x > 40); // ahead of the palm (knuckles at x ≈ 35–39)
+  }
+});
+
+test('pinchPoseForGap hits an exact opening anywhere in the family', () => {
+  for (const g of [3, 8, 12.38, 20, 30]) {
+    const {pose, achieved} = pinchPoseForGap(g);
+    close(achieved, g, 1e-6);
+    close(pinchTips(createArticulatedHand({pose})).surfaceGap, g, 1e-6);
+  }
+  assert.equal(pinchPoseForGap(1000).t, 0);
+  assert.equal(pinchPoseForGap(-5).t, 1);
 });
 
 test('joint limits clamp impossible poses and report it', () => {
@@ -89,5 +102,9 @@ test('attachHandToArm limits wrist bend relative to the forearm', () => {
 test('SVG helpers produce path data', () => {
   const h = createArticulatedHand({pose: 'relaxed'});
   assert.match(digitPath(h.digits[1]), /^M[-\d.]+ [-\d.]+( L[-\d.]+ [-\d.]+){3}$/);
-  assert.match(palmPath(h), / Z$/);
+  assert.match(palmPath(h), /^M[-\d.]+ [-\d.]+( Q[-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+)+ Z$/);
+  const segs = digitSegments(h.digits[1], 6);
+  assert.equal(segs.length, 3);
+  assert.ok(segs[0].width > segs[2].width, 'digits taper toward the tip');
+  close(segs[0].width, h.digits[1].widths[0] + 6);
 });

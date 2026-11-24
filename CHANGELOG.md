@@ -7,6 +7,23 @@ they are listed explicitly.
 
 ## [Unreleased]
 
+### Added
+- **Precision pinch with real thumb–index opposition.** `solvePinchGrip()` fits the pinch opening to an object and places the hand so the thumb and index tips touch two contact points, using the surface normals so oblique grips do not penetrate. Supporting pieces: `placeHandForPinch()`, `pinchPoseForGap()`, `pinchTips()`, and the `pinchWide` → `batteryPinch` → `pinchTight` pose family.
+- **Contact measurement.** `measureDigitContacts()` measures each digit (as tapered capsules) and the palm against an object outline; `signedDistanceToConvexPolygon()`.
+- **Joint radii.** Each digit now has a radius per joint (`radii`), and `digitSegments()` draws tapered digits with one continuous outline.
+- **Elbow constraints.** `minElbowAngle` / `maxElbowAngle` on `TwoBoneArm`, `elbowLimited` on the solution, and `reachForElbowAngle()`.
+- **Smooth multi-waypoint paths.** `sampleSmoothPoint()` / `sampleSmoothScalar()` (cubic Hermite, velocity carried through waypoints, `stop` keys).
+- **Objects that turn with the hand.** `heldAngleAtFrame` on `PropInteraction`; transfer checks report `angleErrorDegrees`.
+- Pinch contact anchors on props: `pinchContacts`, `pinchNormals`, `propPinchContacts()`, `propPinchNormals()`, `propOutline()`.
+- Hand-local coordinates for rigid attachment: `toHandLocal()` / `fromHandLocal()`.
+- `tools/tune-pinch.mjs`: the deterministic search used to tune the pinch poses.
+
+### Changed
+- **Hand proportions (visual change).** The fingers are shorter (middle finger ≈ 0.8 × palm), thicker and tapered. The thumb is thicker and starts at a thenar mound. The palm outline is rounded. The `relaxed` pose is curled, so it no longer hangs straight.
+- `palmPath()` now returns a smoothed path (quadratic curves) instead of straight segments.
+- `widths` on digits is now the mean diameter of each segment (derived from `radii`).
+- `batteryPinch` and `paperPinch` were re-tuned as members of the new pinch family.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

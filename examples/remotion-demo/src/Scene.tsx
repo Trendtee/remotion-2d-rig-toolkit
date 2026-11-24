@@ -1,6 +1,6 @@
 import React, {useMemo} from 'react';
 import {AbsoluteFill, useCurrentFrame} from 'remotion';
-import {digitPath, palmPath, type ArticulatedDigit, type ArticulatedHand, type PropPose} from 'remotion-2d-rig-toolkit';
+import {digitSegments, palmPath, type ArticulatedDigit, type ArticulatedHand, type PropPose} from 'remotion-2d-rig-toolkit';
 import {SHOULDER, TABLE_TOP, buildScene, type SceneConfig} from './rig';
 
 // Original, neutral demo palette. No third-party characters or brand assets.
@@ -12,10 +12,17 @@ const SHIRT_SHADE = '#3c7299';
 const BG = '#f6f1e7';
 const WOOD = '#9a6b4f';
 
+const LINE = 3; // outline weight, the same for palm, fingers and thumb
+
+/** Tapered digit: all outline strokes first, then all fills, so joints read as one continuous shape. */
 const Digit: React.FC<{d: ArticulatedDigit; shade?: boolean}> = ({d, shade}) => (
   <g>
-    <path d={digitPath(d)} fill="none" stroke={INK} strokeWidth={d.widths[0] + 6} strokeLinecap="round" strokeLinejoin="round" />
-    <path d={digitPath(d)} fill="none" stroke={shade ? SKIN_SHADE : SKIN} strokeWidth={d.widths[0]} strokeLinecap="round" strokeLinejoin="round" />
+    {digitSegments(d, 2 * LINE).map((sg, k) => (
+      <line key={`o${k}`} x1={sg.from.x} y1={sg.from.y} x2={sg.to.x} y2={sg.to.y} stroke={INK} strokeWidth={sg.width} strokeLinecap="round" />
+    ))}
+    {digitSegments(d).map((sg, k) => (
+      <line key={`f${k}`} x1={sg.from.x} y1={sg.from.y} x2={sg.to.x} y2={sg.to.y} stroke={shade ? SKIN_SHADE : SKIN} strokeWidth={sg.width} strokeLinecap="round" />
+    ))}
   </g>
 );
 
@@ -31,10 +38,10 @@ const Mug: React.FC = () => (
 
 const Battery: React.FC = () => (
   <g>
-    <rect x={13} y={0} width={14} height={8} rx={3} fill="#c9c9c9" stroke={INK} strokeWidth={4} />
-    <rect x={2} y={6} width={36} height={90} rx={8} fill="#3d3d46" stroke={INK} strokeWidth={5} />
-    <rect x={2} y={6} width={36} height={30} rx={8} fill="#7bc96f" stroke={INK} strokeWidth={5} />
-    <path d="M20 54 V74 M12 64 H28" stroke="#f6f1e7" strokeWidth={4} strokeLinecap="round" />
+    <rect x={8} y={-5} width={10} height={7} rx={2} fill="#c9c9c9" stroke={INK} strokeWidth={3} />
+    <rect x={0} y={0} width={26} height={70} rx={5} fill="#3d3d46" stroke={INK} strokeWidth={4} />
+    <path d="M0 5 Q0 0 5 0 H21 Q26 0 26 5 V22 H0 Z" fill="#7bc96f" stroke={INK} strokeWidth={4} strokeLinejoin="round" />
+    <path d="M13 38 V52 M6 45 H20" stroke="#f6f1e7" strokeWidth={3.5} strokeLinecap="round" />
   </g>
 );
 
@@ -54,7 +61,7 @@ const Hand: React.FC<{hand: ArticulatedHand; layer: 'back' | 'front'; fingersBeh
   }
   return (
     <g>
-      <path d={palmPath(hand)} fill={SKIN} stroke={INK} strokeWidth={6} strokeLinejoin="round" />
+      <path d={palmPath(hand)} fill={SKIN} stroke={INK} strokeWidth={2 * LINE} strokeLinejoin="round" />
       {[...fingers].reverse().filter(d => !isBack(d)).map(d => <Digit key={d.digit} d={d} />)}
       <Digit d={thumb} />
     </g>

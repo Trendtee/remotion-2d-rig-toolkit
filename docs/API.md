@@ -1,4 +1,4 @@
-# API reference (v0.2.0)
+# API reference (v0.2.0 + unreleased)
 
 All functions are pure and deterministic. Coordinates: screen space, **positive y down**. Angles: degrees, **positive = clockwise on screen**. Every export comes from the package root:
 
@@ -48,6 +48,7 @@ interface ArmSolution {
 - `elbowBend: 'clockwise'` puts the elbow on the clockwise side of the shoulder→wrist line. For an arm reaching right, that is **below** the line.
 - `elbowSide` is kept from v0.1.0. `'left'` equals `'clockwise'` and `'right'` equals `'counterclockwise'`. The old names do not match the on-screen side, which is why they are deprecated.
 - The solver throws `RangeError` on non-finite input or non-positive lengths.
+- **Elbow constraints** *(unreleased)*: `minElbowAngle` and `maxElbowAngle` (interior angle, 0–180) clamp the reach along the same ray. When a limit applies, `elbowLimited` is `true` and `targetReachable` is `false`. `reachForElbowAngle(upper, forearm, angle)` returns the shoulder–wrist distance for a given elbow angle.
 
 ## Jointed hands (`src/fingers.ts`)
 
@@ -75,7 +76,8 @@ interface ArticulatedHand {
 interface ArticulatedDigit {
   digit: 'thumb' | 'index' | 'middle' | 'ring' | 'pinky';
   joints: [base, joint1, joint2, tip];  // world space
-  widths: [number, number, number];     // suggested stroke widths (scaled)
+  radii: [number, number, number, number]; // radius at each joint (scaled)
+  widths: [number, number, number];     // mean diameter per segment (scaled)
   curl: [number, number, number];       // applied flexion after clamping
   layer: 'front' | 'back';
   clamped: boolean;                     // requested curl exceeded a joint limit
@@ -100,6 +102,29 @@ interface ArticulatedDigit {
 | `paperPinch` | Sheets and cards (≈3 units) | pinch |
 | `cableWrap` | Thin cylinders: cables, rods, handles | wrap |
 
+### Precision pinch *(unreleased)*
+
+The pinch family `pinchWide` → `batteryPinch` → `pinchTight` puts the thumb and index tips face to face ahead of the knuckles, with the thumb→index axis perpendicular to the hand.
+
+| Export | Description |
+| --- | --- |
+| `pinchTips(hand)` | `{thumb, index, gap, surfaceGap, axisDegrees}`. `surfaceGap` = gap minus both tip radii |
+| `pinchPoseForGap(surfaceGap)` | Pose from the family with exactly that opening (local units). Returns `{pose, t, achieved}` |
+| `placeHandForPinch(thumbContact, indexContact, options)` | Wrist and direction that centre a pose's tips on two contact points. Works for open poses too (they straddle the object evenly) |
+| `solvePinchGrip(thumbContact, indexContact, {scale, side, thumbNormal, indexNormal})` | Fits the opening to the object **and** places the hand: both tips touch. Returns the placement and `pose` |
+
+**Surface normals matter.** A fingertip touches a surface when its centre is one tip radius away *along the surface normal*. For a battery picked up from the upper left, the pinch axis is oblique but the sides are vertical: pass `thumbNormal: (-1, 0)` and `indexNormal: (1, 0)`, or set `pinchNormals` on the prop.
+
+**Recommended sequence** (see `examples/remotion-demo/src/rig.ts`): solve the closed pinch once, keep the wrist there, and blend the fingers `pinchWide → solved pose` to close and back to open. The palm never moves during contact, so the object is never dragged.
+
+### Contact measurement *(unreleased)*
+
+| Export | Description |
+| --- | --- |
+| `measureDigitContacts(hand, outline)` | Per digit (tapered capsules) and the palm: smallest clearance to a convex outline. 0 = touching, < 0 = penetrating |
+| `signedDistanceToConvexPolygon(p, polygon)` | Negative inside, positive outside |
+| `toHandLocal(hand, world)` / `fromHandLocal(hand, local)` | Rigidly attach a point (e.g. an object's grip anchor) to the hand |
+
 ### Joint limits
 
 Fingers: MCP −20°…90°, PIP 0°…110°, DIP 0°…80°. Thumb: CMC −20°…60°, MCP −10°…70°, IP −15°…80°. Use `clampDigitCurl(digit, curl)` to apply the limits yourself.
@@ -113,7 +138,9 @@ Fingers: MCP −20°…90°, PIP 0°…110°, DIP 0°…80°. Thumb: CMC −20°
 | `gripOffset(options)` | Local wrist → grip vector for a pose and orientation |
 | `limitWristBend(forearmAngle, desired, max = 70)` | Returns `{handAngle, bend, correction}` |
 | `attachHandToArm(armSolution, options)` | Builds a hand at the solved wrist, keeps the wrist bend within `maxWristBend` (default 70°), and adds `wristCorrection` |
-| `digitPath(digit)`, `palmPath(hand)` | SVG path data |
+| `digitPath(digit)`, `palmPath(hand)` | SVG path data (the palm is smoothed) |
+| `digitSegments(digit, extra = 0)` | Three tapered segments with stroke widths. Draw all outlines (`extra` = 2 × line weight), then all fills |
+| `digitRadii(digit)` | Unscaled joint radii (base, joint 1, joint 2, tip) |
 | `DIGITS` | `['thumb', 'index', 'middle', 'ring', 'pinky']` |
 
 ## Simple v0.1 hand (`src/hands.ts`)
@@ -132,6 +159,7 @@ Fingers: MCP −20°…90°, PIP 0°…110°, DIP 0°…80°. Thumb: CMC −20°
 | `samplePropInteraction(i, frame)` | `{phase, pose}`. The phase is one of `'resting'`, `'held'`, `'settling'` or `'released'` |
 | `checkPickupContact(i, tol = 1)` | Is the hand on the grip anchor at `pickupFrame`? |
 | `checkReleaseContact(i, tol = 1)` | Is the object's base on `finalBase` at `releaseFrame`? |
+| `propPinchContacts(def, pose)`, `propPinchNormals(def, pose)`, `propOutline(def, pose)` | World-space contacts, normals and outline *(unreleased)* |
 | `inspectPropInteraction(i, from, to, {tolerancePx, maxJumpPx})` | Runs both checks and finds the largest per-frame jump |
 
 ```ts
@@ -145,8 +173,11 @@ interface PropInteraction {
   settleFrames?: number;        // > 0: ease from the hand to finalBase; 0/omitted: placed on the release frame
   scale?: number;
   angleDegrees?: number;
+  heldAngleAtFrame?: (frame: number) => number;  // (unreleased) rotation while held, e.g. turning with the wrist
 }
 ```
+
+`PropDefinition` can also carry `pinchContacts: [thumb, index]` and `pinchNormals: [thumb, index]` *(unreleased)*.
 
 **Changed in v0.2.0:** `finalBase` is now used when `settleFrames` is 0 or omitted (v0.1.0 ignored it), and a non-finite `frame` throws.
 
@@ -157,6 +188,7 @@ interface PropInteraction {
 | `FrameKey<T>` | `{frame, value, interpolation?: 'smooth' \| 'linear' \| 'hold'}`. The interpolation applies to the segment ending at this key |
 | `sampleScalar(keys, frame)` | Keys must have strictly increasing frames. Values clamp at both ends |
 | `samplePoint(keys, frame)` | The same, for points |
+| `sampleSmoothPoint(keys, frame)`, `sampleSmoothScalar(keys, frame)` | *(unreleased)* Cubic Hermite through `PathKey`s: velocity carries through waypoints, `stop: true` comes to rest. Use for multi-waypoint moves |
 
 ## Layers (`src/layers.ts`)
 

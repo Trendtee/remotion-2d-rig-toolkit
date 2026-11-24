@@ -18,9 +18,10 @@ When a character picks up a mug in a programmatic animation, the usual failure i
 
 ## Features
 
-- **Two-bone arm IK.** Bone lengths never stretch. Out-of-reach targets clamp and are reported. You pick the elbow bend direction, and the solver returns the forearm and elbow angles.
-- **Jointed hands.** Five digits with three segments each, joint limits, exact left/right mirroring and pose blending. Nine starter poses are included: `open`, `relaxed`, `fist`, `point`, `mugHandle`, `controller`, `batteryPinch`, `paperPinch` and `cableWrap`.
+- **Two-bone arm IK.** Bone lengths never stretch. Out-of-reach targets clamp and are reported. You pick the elbow bend direction and optional elbow-angle limits, and the solver returns the forearm and elbow angles.
+- **Jointed hands.** Five tapered digits with three segments and a radius per joint, joint limits, exact left/right mirroring and pose blending. The presets are `open`, `relaxed`, `fist`, `point`, `mugHandle`, `controller`, `cableWrap` and the pinch family `pinchWide`, `batteryPinch`, `pinchTight` and `paperPinch`.
 - **Exact grip points.** `wristForGrip()` tells you where the wrist must be so a closed hand lands exactly on an object's handle.
+- **Real precision pinch.** `solvePinchGrip()` fits the thumb–index opening to an object and places the hand so both tips touch opposite sides. `measureDigitContacts()` proves contact and catches penetration.
 - **Prop ownership.** An object rests on a surface, is held by the hand, then is released onto a target surface. Positions are driven by anchors, not by eyeballed offsets.
 - **Continuity QC.** `checkPickupContact()`, `checkReleaseContact()` and `inspectPropInteraction()` catch teleports, floating objects and slipping grips in a unit test.
 - **Frame-based.** Every function is pure. There are no clocks, no randomness and no Remotion dependency in the core, and the same frame always gives the same pose.
@@ -101,17 +102,16 @@ const {phase, pose} = samplePropInteraction(interaction, frame);  // 'resting' |
 The toolkit is honest about its scope:
 
 - **It is a 2D lateral-view hand model, not a 3D hand.** Fingers bend in the drawing plane and there is no out-of-plane rotation.
-- **It has no collision detection.** You decide where the grip point is, and the toolkit makes the hand land on it. It does not check whether finger outlines overlap the object's outline.
+- **It measures contact, it does not resolve collisions.** `measureDigitContacts()` tells you if a finger touches or penetrates an object, but nothing pushes fingers out automatically.
 - **It has no physics.** Released objects stay where they were released or are placed at `finalBase`, and nothing falls or bounces.
 - **It has no character art.** You bring your own drawings. The demo art is deliberately simple placeholder art.
 
 ## Status and roadmap
 
-**v0.2.0. Early, but tested:** 29 unit tests plus per-frame continuity QC on the demo scenes. The API may still change before 1.0. Planned next:
+**v0.2.0 + unreleased pinch work. Early, but tested:** 38 unit tests plus per-frame continuity and contact QC on the demo scenes. The API may still change before 1.0. Planned next:
 
 - an npm release with provenance,
 - two-handed carries and hand-to-hand transfer,
-- prop rotation during carry (tilting a mug, turning a page),
 - more grip presets driven by real use cases. Please [open an issue](https://github.com/Trendtee/remotion-2d-rig-toolkit/issues/new/choose) with yours.
 
 ## Remotion licensing
