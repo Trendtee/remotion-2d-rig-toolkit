@@ -39,13 +39,13 @@
     "typescript",
     "motion-graphics"
   ],
-  "homepage": "https://github.com/AhmiiMirr/remotion-2d-rig-toolkit#readme",
+  "homepage": "https://github.com/Trendtee/remotion-2d-rig-toolkit#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AhmiiMirr/remotion-2d-rig-toolkit.git"
+    "url": "git+https://github.com/Trendtee/remotion-2d-rig-toolkit.git"
   },
   "bugs": {
-    "url": "https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/issues"
+    "url": "https://github.com/Trendtee/remotion-2d-rig-toolkit/issues"
   },
   "license": "MIT",
   "engines": {

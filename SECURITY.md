@@ -14,6 +14,6 @@
 ## Reporting a vulnerability
 
 Please **do not** open a public issue. Use GitHub's private vulnerability reporting instead:
-[Report a vulnerability](https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/security/advisories/new).
+[Report a vulnerability](https://github.com/Trendtee/remotion-2d-rig-toolkit/security/advisories/new).
 
 Expect an acknowledgement within 7 days. Never include credentials, tokens or private assets in a report.

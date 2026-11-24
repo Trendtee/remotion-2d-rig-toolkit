@@ -37,6 +37,6 @@ they are listed explicitly.
 ### Added
 - Initial release: two-bone IK, simple five-digit hand geometry, prop anchors, pickup/carry/release sampling, pickup contact check, keyframe sampling, layer ordering and a minimal Remotion example.
 
-[Unreleased]: https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Trendtee/remotion-2d-rig-toolkit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Trendtee/remotion-2d-rig-toolkit/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Trendtee/remotion-2d-rig-toolkit/releases/tag/v0.1.0

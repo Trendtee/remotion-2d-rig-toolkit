@@ -1,6 +1,6 @@
 # remotion-2d-rig-toolkit
 
-[![CI](https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/actions/workflows/ci.yml)
+[![CI](https://github.com/Trendtee/remotion-2d-rig-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/Trendtee/remotion-2d-rig-toolkit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
@@ -30,9 +30,9 @@ When a character picks up a mug in a programmatic animation, the usual failure i
 The package is not on npm yet (see the [roadmap](#status-and-roadmap)). Install it from GitHub or from a local clone:
 
 ```bash
-npm install github:AhmiiMirr/remotion-2d-rig-toolkit
+npm install github:Trendtee/remotion-2d-rig-toolkit
 # or
-git clone https://github.com/AhmiiMirr/remotion-2d-rig-toolkit.git
+git clone https://github.com/Trendtee/remotion-2d-rig-toolkit.git
 cd remotion-2d-rig-toolkit && npm install && npm run build
 npm install /path/to/remotion-2d-rig-toolkit   # inside your Remotion project
 ```
@@ -112,7 +112,7 @@ The toolkit is honest about its scope:
 - an npm release with provenance,
 - two-handed carries and hand-to-hand transfer,
 - prop rotation during carry (tilting a mug, turning a page),
-- more grip presets driven by real use cases. Please [open an issue](https://github.com/AhmiiMirr/remotion-2d-rig-toolkit/issues/new/choose) with yours.
+- more grip presets driven by real use cases. Please [open an issue](https://github.com/Trendtee/remotion-2d-rig-toolkit/issues/new/choose) with yours.
 
 ## Remotion licensing
 
