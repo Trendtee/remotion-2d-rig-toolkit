@@ -22,3 +22,20 @@ export const rotate = (p: Point, degrees: number): Point => {
 };
 
 export const isFinitePoint = (p: Point): boolean => Number.isFinite(p.x) && Number.isFinite(p.y);
+
+/** Direction of the vector from `a` to `b`, in degrees. With positive y down, positive angles turn clockwise on screen. */
+export const angleBetween = (a: Point, b: Point): number => (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+
+/** Unit-length vector pointing along `degrees` (same convention as `rotate`). */
+export const fromAngle = (degrees: number, len = 1): Point => rotate(point(len, 0), degrees);
+
+/** Shortest signed angular difference `b - a`, normalised to (-180, 180]. */
+export const angleDelta = (a: number, b: number): number => {
+  let d = (b - a) % 360;
+  if (d <= -180) d += 360;
+  if (d > 180) d -= 360;
+  return d;
+};
+
+/** Interpolates angles along the shortest arc, so 350° → 10° passes through 0° instead of 180°. */
+export const lerpAngle = (a: number, b: number, t: number): number => a + angleDelta(a, b) * t;

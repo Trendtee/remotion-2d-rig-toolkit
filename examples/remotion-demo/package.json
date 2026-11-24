@@ -1,0 +1,22 @@
+{
+  "name": "remotion-2d-rig-toolkit-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render:mug": "remotion render src/index.ts MugPickup out/mug-pickup.mp4",
+    "render:battery": "remotion render src/index.ts BatteryPinch out/battery-pinch.mp4",
+    "qc": "node --test qc/*.test.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.546",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.546",
+    "remotion-2d-rig-toolkit": "file:../.."
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "5.8.3"
+  }
+}

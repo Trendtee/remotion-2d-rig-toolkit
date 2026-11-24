@@ -16,12 +16,17 @@ export interface HandGeometry {
   wrist: Point;
   palmCenter: Point;
   palmRadius: Point;
+  /** Rotation of the palm ellipse in degrees (apply as an SVG `rotate()` around `palmCenter`). */
+  palmAngle: number;
   fingers: Finger[];
 }
 
 /**
- * Original neutral 2D hand layout; intentionally independent of any specific character design.
- * Local +x points toward the fingertips; wrist pivot is (0,0).
+ * Simple v0.1 hand: each digit is ONE straight segment (base → tip) with no joints.
+ * Useful for quick sketches; for jointed fingers and grip presets use `createArticulatedHand()`.
+ *
+ * Local +x points toward the fingertips; wrist pivot is (0,0). `side: 'left'` mirrors the result
+ * horizontally (x → −x) after applying `wristAngle`.
  */
 export function createHandGeometry(grip: HandGrip, side: HandSide = 'right', wristAngle = 0): HandGeometry {
   const profiles: Record<HandGrip, Array<[DigitName, number, number, number, number, 'front' | 'back']>> = {
@@ -47,11 +52,17 @@ export function createHandGeometry(grip: HandGrip, side: HandSide = 'right', wri
     ]
   };
   const mirror = side === 'right' ? 1 : -1;
-  const local = (p: Point) => rotate(point(mirror * p.x, p.y), wristAngle);
+  // Rotate first, then mirror, so a left hand is the exact mirror image of a right hand
+  // at the same wristAngle. (v0.1.0 mirrored first, which broke symmetry for non-zero angles.)
+  const local = (p: Point) => {
+    const r = rotate(p, wristAngle);
+    return point(mirror * r.x, r.y);
+  };
   return {
     wrist: point(0, 0),
     palmCenter: local(point(20, 0)),
     palmRadius: point(19, 18),
+    palmAngle: side === 'right' ? wristAngle : 180 - wristAngle,
     fingers: profiles[grip].map(([digit, bx, by, tx, ty, layer]) => ({
       digit, base: local(point(bx, by)), tip: local(point(tx, ty)),
       thickness: digit === 'thumb' ? 10 : digit === 'pinky' ? 7 : 8,
@@ -66,6 +77,7 @@ export function moveHandGeometry(hand: HandGeometry, wristWorld: Point): HandGeo
     wrist: wristWorld,
     palmCenter: add(hand.palmCenter, wristWorld),
     palmRadius: hand.palmRadius,
+    palmAngle: hand.palmAngle,
     fingers: hand.fingers.map(f => ({...f, base: add(f.base, wristWorld), tip: add(f.tip, wristWorld)}))
   };
 }

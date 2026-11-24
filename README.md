@@ -1,113 +1,123 @@
-# Remotion 2D Rig Toolkit
+# remotion-2d-rig-toolkit
 
-**Small, original TypeScript helpers for deterministic 2D character arms and object interactions.**
+[![CI](https://github.com/Trendtee/remotion-2d-rig-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/Trendtee/remotion-2d-rig-toolkit/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-339933)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 
-This open-source starter project provides:
+**Deterministic 2D arm IK, jointed cartoon hands and prop pickup/release helpers for Remotion and other frame-based renderers.**
 
-- **Two-bone arm IK** with stable shoulder, elbow and wrist points, fixed bone lengths, and unreachable-target handling.
-- **Five-digit neutral cartoon hand geometry**, including left/right mirroring and a few starter grip poses.
-- **Prop anchors** for a resting base and a hand grip point.
-- **Pickup / carry / release** state sampling with optional post-release settling.
-- **Pickup-contact validation** to catch object snapping before rendering.
-- **Frame-based interpolation** suitable for Remotion and other deterministic renderers.
-- **Layer-order helpers** for placing fingers behind and in front of a prop.
-- A simple **Remotion SVG example** with no proprietary art or voice assets.
+When a character picks up a mug in a programmatic animation, the usual failure is not the arm. It is the half-second where the mug floats, snaps into the hand, slides through the fingers or drops onto the table by itself. This toolkit makes that contact explicit and **testable before you render**.
 
-> Status: **v0.1.0 prototype**. The TypeScript core and unit tests have been checked locally. The optional Remotion scene is an illustrative example, not a fully rendered production demonstration. It does not include physics, collision detection, image sprites or a complete character system.
+<p align="center">
+  <img src="docs/media/mug-pickup.gif" width="360" alt="A cartoon character reaches for a mug, grips the handle, lifts and carries it, places it on the table and lets go." />
+  <img src="docs/media/battery-pinch.gif" width="360" alt="The same character picks up a small battery with a precision pinch and places it further along the table." />
+</p>
 
-## Getting started
+<p align="center"><sub>Rendered with Remotion from <a href="examples/remotion-demo">examples/remotion-demo</a>. Both scenes pass the automated continuity check: 0.000 px contact error at pickup and release.</sub></p>
 
-Requires Node.js 20+ and TypeScript 5.8.x. No hosted service or API keys required.
+## Features
+
+- **Two-bone arm IK.** Bone lengths never stretch. Out-of-reach targets clamp and are reported. You pick the elbow bend direction and optional elbow-angle limits, and the solver returns the forearm and elbow angles.
+- **Jointed hands.** Five tapered digits with three segments and a radius per joint, joint limits, exact left/right mirroring and pose blending. The presets are `open`, `relaxed`, `fist`, `point`, `mugHandle`, `controller`, `cableWrap` and the pinch family `pinchWide`, `batteryPinch`, `pinchTight` and `paperPinch`.
+- **Exact grip points.** `wristForGrip()` tells you where the wrist must be so a closed hand lands exactly on an object's handle.
+- **Real precision pinch.** `solvePinchGrip()` fits the thumb–index opening to an object and places the hand so both tips touch opposite sides. `measureDigitContacts()` proves contact and catches penetration.
+- **Prop ownership.** An object rests on a surface, is held by the hand, then is released onto a target surface. Positions are driven by anchors, not by eyeballed offsets.
+- **Continuity QC.** `checkPickupContact()`, `checkReleaseContact()` and `inspectPropInteraction()` catch teleports, floating objects and slipping grips in a unit test.
+- **Frame-based.** Every function is pure. There are no clocks, no randomness and no Remotion dependency in the core, and the same frame always gives the same pose.
+
+## Install
+
+The package is not on npm yet (see the [roadmap](#status-and-roadmap)). Install it from GitHub or from a local clone:
 
 ```bash
-npm install
-npm test
+npm install github:Trendtee/remotion-2d-rig-toolkit
+# or
+git clone https://github.com/Trendtee/remotion-2d-rig-toolkit.git
+cd remotion-2d-rig-toolkit && npm install && npm run build
+npm install /path/to/remotion-2d-rig-toolkit   # inside your Remotion project
 ```
 
-In your Remotion project, you can install this toolkit as a local dependency:
+It requires Node.js 22 or newer. The library has **no runtime dependencies**.
 
-```bash
-npm install /path/to/remotion-2d-rig-toolkit
-```
-
-The math and scene state are pure functions: there is no dependency on `useCurrentFrame()` inside the core. Read the current frame in your Remotion component and pass it to `samplePropInteraction()`.
-
-## Two-bone arm example
-
-```ts
-import {point, solveTwoBoneArm} from 'remotion-2d-rig-toolkit';
-
-const pose = solveTwoBoneArm({
-  shoulder: point(120, 180),
-  upperArmLength: 85,
-  forearmLength: 90,
-  elbowSide: 'left',
-}, point(250, 245));
-
-// SVG or canvas: shoulder -> elbow -> wrist
-console.log(pose.shoulder, pose.elbow, pose.wrist, pose.targetReachable);
-```
-
-## Prop interaction example
+## Quick start
 
 ```ts
 import {
-  point, placePropAtBase, worldAnchor,
-  checkPickupContact, samplePropInteraction
+  point, solveTwoBoneArm, wristForGrip, attachHandToArm, digitPath, palmPath
 } from 'remotion-2d-rig-toolkit';
 
-const battery = {
-  width: 60,
-  height: 20,
-  gripAnchor: point(30, 10),
-  baseAnchor: point(30, 20)
-};
-const restBase = point(300, 440);
-const gripAtRest = worldAnchor(placePropAtBase(battery, restBase), battery.gripAnchor);
+const arm = {shoulder: point(320, 480), upperArmLength: 190, forearmLength: 180, elbowBend: 'clockwise'} as const;
+
+// 1. Where should the hand's grip point be? (e.g. a mug handle)
+const handle = point(560, 640);
+
+// 2. Put the wrist where a closed mug grip lands exactly on the handle.
+const wrist = wristForGrip(handle, {pose: 'mugHandle', forwardDegrees: 0, scale: 2});
+
+// 3. Solve the arm and attach a jointed hand.
+const solved = solveTwoBoneArm(arm, wrist);
+const hand = attachHandToArm(solved, {pose: 'mugHandle', handAngle: 0, scale: 2});
+
+// 4. Draw it however you like: SVG, canvas, Skia…
+hand.digits.map(digitPath);  // "M… L… L… L…" per finger
+palmPath(hand);              // closed palm outline
+```
+
+In Remotion, read `useCurrentFrame()` in your component and pass the frame to the toolkit's samplers. The [quick-start guide](docs/QUICKSTART.md) builds a complete pickup scene step by step.
+
+## Pickup and release without teleports
+
+```ts
+import {point, checkPickupContact, checkReleaseContact, samplePropInteraction} from 'remotion-2d-rig-toolkit';
 
 const interaction = {
-  prop: battery,
-  initialBase: restBase,
-  pickupFrame: 20,
-  releaseFrame: 50,
-  gripAtFrame: (frame: number) =>
-    frame <= 20 ? gripAtRest : point(gripAtRest.x, gripAtRest.y - (frame - 20) * 2)
+  prop: {width: 150, height: 140, gripAnchor: point(18, 72), baseAnchor: point(92, 138)},
+  initialBase: point(570, 712),          // where it stands before pickup
+  finalBase: point(790, 712),            // where it is placed
+  pickupFrame: 66,
+  releaseFrame: 162,
+  gripAtFrame: (frame: number) => handGripPoint(frame) // your animated hand
 };
 
-// Ensure the hand reaches the object's grip anchor at the pickup frame.
-if (!checkPickupContact(interaction).ok) throw new Error('Hand misses the object');
+checkPickupContact(interaction);   // {ok, errorPx}: is the hand on the handle at pickup?
+checkReleaseContact(interaction);  // would the mug float or snap after release?
 
-const atFrame35 = samplePropInteraction(interaction, 35);
-console.log(atFrame35.phase, atFrame35.pose.topLeft);
+const {phase, pose} = samplePropInteraction(interaction, frame);  // 'resting' | 'held' | 'released'
 ```
 
-To display five-digit hand geometry, call `createHandGeometry('handle', 'right')`, then `moveHandGeometry()` to place it at the solved wrist. Implement your own character art and finger paths.
+## Documentation
 
-## Optional Remotion demo
+| | |
+| --- | --- |
+| [Quick start](docs/QUICKSTART.md) | Build a reach-grip-lift-place scene from scratch |
+| [API reference](docs/API.md) | Every exported function and type |
+| [Architecture](docs/ARCHITECTURE.md) | Coordinate system, design decisions, limitations |
+| [Remotion demo](examples/remotion-demo/README.md) | Runnable Remotion project with two scenes and automated QC |
+| [Changelog](CHANGELOG.md) | What changed in each version |
+| [Contributing](CONTRIBUTING.md) | How to propose changes |
 
-See [the Remotion SVG demo](examples/remotion/README.md) for an original cartoon mug interaction. The demo uses a generic arm silhouette and a simple mug, without any existing production characters.
+## What it is not
 
-## Key limitation: contact is explicit
+The toolkit is honest about its scope:
 
-The hand **must be at the prop's grip anchor at `pickupFrame`**. The toolkit intentionally reports a mismatch instead of silently blending through a floating object. Likewise, release is anchored to the hand's last frame; choose a final surface base position and settling duration to stage the placement.
+- **It is a 2D lateral-view hand model, not a 3D hand.** Fingers bend in the drawing plane and there is no out-of-plane rotation.
+- **It measures contact, it does not resolve collisions.** `measureDigitContacts()` tells you if a finger touches or penetrates an object, but nothing pushes fingers out automatically.
+- **It has no physics.** Released objects stay where they were released or are placed at `finalBase`, and nothing falls or bounces.
+- **It has no character art.** You bring your own drawings. The demo art is deliberately simple placeholder art.
 
-This v0.1 library is a solid foundation for hand-and-prop continuity checks, not a drop-in cure for anatomy or a substitute for visual review.
+## Status and roadmap
 
-## Development
+**v0.2.0 + unreleased pinch work. Early, but tested:** 38 unit tests plus per-frame continuity and contact QC on the demo scenes. The API may still change before 1.0. Planned next:
 
-```bash
-npm run typecheck
-npm test
-```
+- an npm release with provenance,
+- two-handed carries and hand-to-hand transfer,
+- more grip presets driven by real use cases. Please [open an issue](https://github.com/Trendtee/remotion-2d-rig-toolkit/issues/new/choose) with yours.
 
-The `tests/` suite covers arm lengths, out-of-range targets, degenerate target positions, anchor consistency, pickup discontinuities, release continuity, left/right hand geometry, keyframes and layer ordering.
+## Remotion licensing
 
-## Open source and privacy
-
-All code and artwork in this repository were prepared as **standalone generic examples**. No private character artwork, scripts, voices, private animation source, account details, paid assets, or confidential production documents should be added.
-
-Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+This toolkit is MIT-licensed and does not depend on Remotion. If you render with **Remotion**, note that Remotion has its own license: it is free for individuals and organisations of up to three people, and larger companies need a company license. See [remotion.dev/license](https://www.remotion.dev/license).
 
 ## License
 
-MIT for the code in this repository. Remotion, when used as an optional host renderer, has its own separate license and requirements; see [Remotion's documentation](https://www.remotion.dev/docs/).
+[MIT](LICENSE) © 2026 Trendtee. The demo artwork in this repository is original and MIT-licensed as well.

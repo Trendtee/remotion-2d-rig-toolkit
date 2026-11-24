@@ -4,3 +4,4 @@ export * from './timeline.js';
 export * from './props.js';
 export * from './hands.js';
 export * from './layers.js';
+export * from './fingers.js';
